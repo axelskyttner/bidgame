@@ -1,0 +1,2 @@
+# bidgame
+API for bidgame
