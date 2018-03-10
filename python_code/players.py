@@ -2,7 +2,6 @@
 import uuid
 import numpy
 import random
-from dqn_agent import q_agent
 from keras.models import Sequential 
 from keras.layers import  Dense
 from keras.optimizers import  Adam
