@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from rpc_client import FibonacciRpcClient
-from players import Player
+from game_engine_rpc import GameEngineRpcClient
+from players import RpcPlayer, RLPlayer, DefaultPlayer, RandomPlayer, HumanPlayer
 import json
 import pprint
 import numpy
@@ -20,41 +20,28 @@ def get_color():
     return numpy.random.choice(colorList)
 
 
-def play_round(players, color, transaction_list):
-    usernames = map(lambda x:x.name, players) 
-
-    values = []
-    highest_score = 0
-    for player in players:
-        if(len(values) > 0):
-            highest_score = max(values) 
-        values.append(player.action(
-                                    {   'color':color,  
-                                       'transaction_list': transaction_list ,
-                                       'current_bid': highest_score 
-                                    }))
-
-    players_dict = dict(zip (usernames, values))
-    winningPlayer = keywithmaxval(players_dict)
-    winningBid = players_dict[winningPlayer]
-
-    return {"name": winningPlayer, 'bid': winningBid}    
 
 
 class BidGame():
-    def __init__(self):
-        #fix: rename and add javascript client
-        self.engine_rpc = FibonacciRpcClient()
+    def __init__(self, host = 'localhost'):
+        self.engine_rpc = GameEngineRpcClient(host)
         self.pp = pprint.PrettyPrinter(indent=4)
         
-        self.players = [ Player("p1",'player-1-queue' ),  
-                    Player("p2",'player-2-queue' )
+        self.players = [ 
+                   RLPlayer("rl-player"),
+                   #DefaultPlayer("p2", 8)
+                   RandomPlayer("p2")
+                   #HumanPlayer("human")
             ]
     
     def visualize(self, state):
         transaction_list = state['transaction_list'] 
         winner = state['winner'] 
         pp = self.pp
+        if(winner == False):
+            pp.pprint("Oops, no winner, is there player's connected?")
+            pp.pprint("transactionlist: %s" % str(transaction_list))
+            return False
 
         pp.pprint("------------------------------------------")
         pp.pprint("-----------The winner is %s!!-------------" % winner) 
@@ -75,41 +62,102 @@ class BidGame():
         state = {
                 'transaction-list': transaction_list, 
                 'playername':playername, 
-                'cost':bid, 
+                'cost':int(bid), 
                 'color':color
                 }
-    
-        response = json.loads(engine_rpc.call(json.dumps(state)))
+        json_to_send = json.dumps(state)
+        response_json = engine_rpc.call(json.dumps(state))
+        response = json.loads(response_json)
         return response
 
+    def play_round(self,players, color, transaction_list):
+    
+        # need players for playing a round
+        if len(players) == 0:
+            return []
+    
+        usernames = map(lambda x:x.name, players) 
+    
+        list_with_bids = []
+        highest_score = 0
+        state_to_rember = {}
+        action_to_remember = False
+        state_to_remember = False
+        for player in players:
+    
+            if(len(list_with_bids) > 0):
+                highest_score = max(list_with_bids) 
+    
+            current_state = {   
+                'color':color,  
+                'transaction_list': transaction_list ,
+                'current_bid': highest_score 
+               }
+            player_action = player.action(current_state) 
+            list_with_bids.append(player_action)
+    
+        players_dict = dict(zip (usernames, list_with_bids))
+        winningPlayer = keywithmaxval(players_dict)
+        winningBid = players_dict[winningPlayer]
+    
+        new_state = self.env_step({
+                        'transaction_list': transaction_list, 
+                        'name':winningPlayer, 
+                        'cost': winningBid, 
+                        'color':color
+                        })
+
+        transaction_list = new_state["transaction-list"]
+        endOfGame = new_state["endOfGame"]
+
+        new_state_to_remember = {
+
+            'transaction_list':transaction_list,
+            'color':get_color(),
+            'current_bid':0
+        } 
+
+        for player in players:
+            if player.is_rl():
+                if endOfGame and new_state['winner'] == player.name:
+                    print("player %s is winner, rewarding! " % player.name)
+                    reward = 1
+                elif endOfGame and new_state['winner'] != player.name:
+                    reward = -1
+                else :
+                    reward = 0
+                player.remember(new_state_to_remember, reward, endOfGame ) 
+
+        return new_state
 
     def run(self):        
 
-        endOfGame = False   
         transaction_list = []
         players = self.players
-        
-
+        rlPlayer = players[0]    
+        winner = False 
+        endOfGame = False if len(players) > 0 else True   
         while not endOfGame:
             color = get_color()      
-            winning_bid = play_round(players, color, transaction_list)
-            winningPlayer= winning_bid['name']
-            bid= winning_bid['bid']
-        
-            state = self.env_step({
-                    'transaction_list': transaction_list, 
-                    'name':winningPlayer, 
-                    'cost': bid, 
-                    'color':color
-                    })
-        
-            transaction_list = state["transaction-list"]
-            winner = state["winner"]
-            endOfGame = state["endOfGame"]
-            print("end of game?")
-             
+            new_state = self.play_round(players, color, transaction_list)
+            endOfGame = new_state['endOfGame']
+            transaction_list = new_state['transaction-list']
+
+        winner_name = new_state["winner"]
+
         print("end of game")    
-        return {'transaction_list':transaction_list, 'winner':winner} 
+
+        #learn
+        for player in players:
+            if player.is_rl():
+                if(winner == "rl-player"):
+                    reward = 1
+                else:
+                    reward = -1
+                rlPlayer.replay()
+                rlPlayer.target_train()
+        
+        return {'transaction_list':transaction_list, 'winner':winner_name} 
         
         
         

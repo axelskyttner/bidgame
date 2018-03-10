@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 from dqn_agent import q_agent
-from rpc_client import FibonacciRpcClient
+from game_engine_rpc import GameEngineRpcClient
 import numpy as np
 import pika
 import uuid
 import json
 import pprint
 #init
-fibonacci_rpc = FibonacciRpcClient()
+fibonacci_rpc = GameEngineRpcClient('molnhatt.se')
 agent = q_agent()
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -45,7 +45,6 @@ def env_step(input_state, action):
     state = {'transaction-list': transaction_list, 'playername':playername, 'cost':10, 'color':'green'}
     response = json.loads(fibonacci_rpc.call(json.dumps(state)))
     response["reward"] = 1
-    #response["endOfGame"] = True
     return response
 
 endOfGame = False   

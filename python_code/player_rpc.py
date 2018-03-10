@@ -4,8 +4,9 @@ import uuid
 
 
 class JavascriptRpcClient():
-    def __init__(self, queueName, host='localhost'):
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=host))
+    def __init__(self, queueName, host='molnhatt.se'):
+        self.connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=host))
 
         self.channel = self.connection.channel()
 
@@ -23,13 +24,13 @@ class JavascriptRpcClient():
         self.response = None
         self.corr_id = str(uuid.uuid4())
         self.channel.basic_publish(exchange='',
-                                   routing_key=self.queueName, #'player-1-queue',
+                                   routing_key=self.queueName,
+                                   # 'player-1-queue',
                                    properties=pika.BasicProperties(
-                                         reply_to = self.callback_queue,
-                                         correlation_id = self.corr_id,
+                                         reply_to=self.callback_queue,
+                                         correlation_id=self.corr_id,
                                          ),
                                    body=str(n))
         while self.response is None:
             self.connection.process_data_events()
         return int(self.response)
-

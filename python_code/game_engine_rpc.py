@@ -2,9 +2,11 @@
 import pika
 import uuid
 
-class FibonacciRpcClient(object):
-    def __init__(self):
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host='molnhatt.se'))
+
+class GameEngineRpcClient(object):
+    def __init__(self, host):
+        parameters = pika.ConnectionParameters(host=host)
+        self.connection = pika.BlockingConnection(parameters)
 
         self.channel = self.connection.channel()
 
@@ -22,13 +24,12 @@ class FibonacciRpcClient(object):
         self.response = None
         self.corr_id = str(uuid.uuid4())
         self.channel.basic_publish(exchange='',
-                                   routing_key='rpc_queue',
+                                   routing_key='engine_queue',
                                    properties=pika.BasicProperties(
-                                         reply_to = self.callback_queue,
-                                         correlation_id = self.corr_id,
+                                         reply_to=self.callback_queue,
+                                         correlation_id=self.corr_id,
                                          ),
                                    body=str(n))
         while self.response is None:
             self.connection.process_data_events()
         return self.response
-

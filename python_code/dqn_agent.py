@@ -13,8 +13,9 @@ class q_agent:
     def create_model(self):
         model = Sequential()  
         model.add(Dense(5, input_shape = (12,)))
-        model.add(Dense(10, activation='linear'))
-        model.compile(optimizer = 'sgd', loss='mean_squared_error')
+        model.add(Dense(10, activation='sigmoid'))
+        model.compile(optimizer = 'Adam', loss='binary_crossentropy')
+        model.summary()
         return model
     def get_model(self):
         return self.model

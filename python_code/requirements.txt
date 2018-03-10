@@ -1,2 +1,5 @@
 pika
 numpy
+pytest
+keras
+tensorflow

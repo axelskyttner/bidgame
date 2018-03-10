@@ -4,7 +4,7 @@ from dqn_agent import q_agent
 import numpy as np
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(
-        host='localhost'))
+        host='molnhatt.se'))
 
 channel = connection.channel()
 queuename = 'player-1-queue'
