@@ -4,30 +4,9 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 import numpy as np
+import json
+from util import *
 
-
-def count_number_of_colors(player_transactions):
-    nr_colors = {
-        'RED': 0,
-        'BLUE': 0,
-        'GREEN': 0
-    }
-    for player_transaction in player_transactions:
-
-        nr_colors[player_transaction["color"].upper()] += 1
-
-    return nr_colors
-
-
-def get_total_money_left(player_transactions):
-    total_amount = 100
-    cost_list = [transaction['cost'] for transaction in player_transactions]
-    money_spent = sum(cost_list)
-    return total_amount - money_spent
-
-
-def get_name(transaction):
-    return transaction['name']
 
 
 # fix: this is broken
@@ -44,21 +23,21 @@ class RpcPlayer():
         transaction_list = state['transaction_list']
         json_info = json.dumps({'color':color, 'bid':bid, 'transaction-list':[]})
         bidvalue = self.javascript_rpc.call(json_info)
-        
+
         return bidvalue
-   
+
 
 class HumanPlayer():
     def __init__(self, name):
         self.type = 'default_player'
         self.name = name
-    
+
     def is_rl(self):
         return False
 
     def action(self, input_state):
         try:
-            action =  int(input("type your bid"))
+            action = int(input("type your bid"))
         except:
             action = 0
         return action
@@ -87,7 +66,7 @@ class RandomPlayer():
         return False
 
     def action(self, input_state):
-        return int(np.random.random()*10)
+        return int(np.random.random()*100)
 
 
 class RLPlayer():
@@ -117,57 +96,11 @@ class RLPlayer():
     def remember(self, new_state, reward, done):
         action = self.last_action
         state = self.last_state
-        state_arr = self.convert_state_dict_to_arr(state)
-        new_state_arr = self.convert_state_dict_to_arr(new_state)
+        state_arr = convert_state_dict_to_arr(state)
+        new_state_arr = convert_state_dict_to_arr(new_state)
 
         self.memory.append([state_arr, action, new_state_arr, reward, done])
         return True
-
-    # def how should this be created?
-    def convert_state_dict_to_arr(self, state_dict):
-
-        # following rgb convention
-        current_color_index_dictionary = {
-            'RED': 0,
-            'GREEN': 1,
-            'BLUE': 2
-        }
-
-        current_color = state_dict['color'].upper()
-        current_color_index = current_color_index_dictionary[current_color]
-
-        transaction_list = state_dict['transaction_list']
-
-        player_names = list(set(map(get_name, transaction_list)))
-
-        players_information = {}
-        for player_name in player_names:
-            player_information = {}
-            player_transactions = [transaction for transaction in transaction_list if transaction['name'] == player_name]
-            nr_colors = count_number_of_colors(player_transactions)
-            money_left = get_total_money_left(player_transactions)
-            player_information['colors'] = nr_colors
-            player_information['money_left'] = money_left
-            players_information[player_name] = player_information
-
-        nr_players = 2
-        nr_colors = 3
-        state_arr = np.zeros((nr_players+1, nr_colors+2))
-
-        # add all the player specific information to array
-        for player_index, player_name in enumerate(player_names):
-            color_info = players_information[player_name]['colors']
-
-            for color_index, color_value in enumerate(color_info.values()):
-                state_arr[player_index][color_index] = color_value
-
-            money_left_index = -1
-            state_arr[player_index][money_left_index] = players_information[player_name]['money_left']
-
-        # add the misc layer
-        state_arr[-1, current_color_index] = 1
-
-        return state_arr.flatten()
 
     def create_model(self):
             output_size = 10
@@ -210,7 +143,7 @@ class RLPlayer():
         self.target_model.set_weights(target_weights)
 
     def action(self, state):
-        state_arr = self.convert_state_dict_to_arr(state)
+        state_arr = convert_state_dict_to_arr(state)
         self.epsilon *= self.epsilon_decay
         self.epsilon = max(self.epsilon_min, self.epsilon)
 
@@ -224,4 +157,4 @@ class RLPlayer():
         self.last_state = state
         print("action of RL-player: %i" % action)
         print("during state %s" % str(state_arr))
-        return action
+        return action * 10

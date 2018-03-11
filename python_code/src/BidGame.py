@@ -5,6 +5,9 @@ from players import RandomPlayer
 import json
 import pprint
 import numpy
+from collections import Counter
+
+from util import get_player_transactions, get_total_money_left
 
 
 def keywithmaxval(d):
@@ -18,6 +21,68 @@ def keywithmaxval(d):
 def get_color():
     colorList = ["RED", "BLUE", "GREEN"]
     return numpy.random.choice(colorList)
+
+
+def player_can_afford_it(transaction_list, player_name, bid):
+    player_transactions = get_player_transactions(transaction_list,
+                                                  player_name)
+    money_left = get_total_money_left(player_transactions)
+    if money_left >= bid:
+        return True
+    else:
+        return False
+
+
+def initialize_player_bids(players):
+    player_bids = {}
+    for player in players:
+        player_bids[player.name] = 0
+
+    return player_bids
+
+
+def get_players(transaction_list):
+    return list(set(map(lambda x: x['name'], transaction_list)))
+
+
+def get_player_score(transaction_list, player_name):
+    most_common_color = get_most_common_color(transaction_list, 1)
+    snd_most_common_color = get_most_common_color(transaction_list, 2)
+    player_transactions = get_player_transactions(transaction_list,
+                                                  player_name)
+    player_colors = [trans['color'] for trans in player_transactions]
+
+    top_scores = [3 for color in player_colors if color == most_common_color]
+    snd_top_scores = [1 for color in player_colors if color == snd_most_common_color]
+    return sum(top_scores) + sum(snd_top_scores)
+
+
+def get_winner(transaction_list):
+    players = get_players(transaction_list)
+    player_scores = {}
+    for player in players:
+        player_score = get_player_score(transaction_list, player)
+        player_scores['player'] = player_score
+
+    return keywithmaxval(player_scores)
+
+
+def get_most_common_color(transaction_list, n=1):
+    color_list = [trans['color'] for trans in transaction_list]
+    counted_list = Counter(color_list).most_common(n)
+
+    # we do not want to ask for snd most common if only one color exists
+    if len(counted_list) < n:
+        return ""
+
+    nth_most_common_color, nr_of_nth_color = counted_list[n-1]
+    return nth_most_common_color
+
+
+def is_game_finished(transaction_list):
+    color_list = [trans['color'] for trans in transaction_list]
+    most_common_color, nr_of_one_color = Counter(color_list).most_common(1)[0]
+    return nr_of_one_color > 2
 
 
 class BidGame():
@@ -50,97 +115,103 @@ class BidGame():
         pp.pprint("------------------------------------------")
 
     def env_step(self, input_state):
-        engine_rpc = self.engine_rpc
         transaction_list = input_state['transaction_list']
         playername = input_state['name']
         bid = input_state['cost']
         color = input_state['color']
+        transaction_list.append({
+            'cost': int(bid),
+            'color': color,
+            'name': playername
+
+            })
+
+        end_of_game = is_game_finished(transaction_list)
+        if end_of_game is True:
+            winner = get_winner(transaction_list)
+        else:
+            winner = False
 
         state = {
-                'transaction-list': transaction_list,
-                'playername': playername,
-                'cost': int(bid),
-                'color': color
+                'transaction_list': transaction_list,
+                'winner': winner,
+                'endOfGame': end_of_game
                 }
-        response_json = engine_rpc.call(json.dumps(state))
-        response = json.loads(response_json)
-        return response
+        return state
 
     def play_round(self, players, color, transaction_list):
 
-        # need players for playing a round
-        if len(players) == 0:
-            return []
-
-        usernames = map(lambda x: x.name, players)
-
-        list_with_bids = []
-        highest_score = 0
+        # initialise bids
+        player_bids = initialize_player_bids(players)
         for player in players:
-
-            if(len(list_with_bids) > 0):
-                highest_score = max(list_with_bids)
-
+            player_name = player.name
             current_state = {
                 'color': color,
                 'transaction_list': transaction_list,
-                'current_bid': highest_score
+                'player_bids': player_bids
                }
+
             player_action = player.action(current_state)
-            list_with_bids.append(player_action)
-
-        players_dict = dict(zip(usernames, list_with_bids))
-        winningPlayer = keywithmaxval(players_dict)
-        winningBid = players_dict[winningPlayer]
-
-        new_state = self.env_step({
-                        'transaction_list': transaction_list,
-                        'name': winningPlayer,
-                        'cost': winningBid,
-                        'color': color
-                        })
-
-        transaction_list = new_state["transaction-list"]
-        endOfGame = new_state["endOfGame"]
-
-        new_state_to_remember = {
-
-            'transaction_list': transaction_list,
-            'color': get_color(),
-            'current_bid': 0
-        }
-
-        for player in filter(lambda p: p.is_rl(), players):
-            if endOfGame and new_state['winner'] == player.name:
-                print("player %s is winner, rewarding! " % player.name)
-                reward = 1
-            elif endOfGame and new_state['winner'] != player.name:
-                reward = -1
+            payment_ok = player_can_afford_it(transaction_list,
+                                              player_name,
+                                              player_action)
+            if payment_ok:
+                player_bids[player_name] = player_action
             else:
-                reward = 0
-            player.remember(new_state_to_remember, reward, endOfGame)
+                player_bids[player_name] = 0
 
-        return new_state
+        winningPlayer = keywithmaxval(player_bids)
+        winningBid = player_bids[winningPlayer]
+
+        playername = winningPlayer
+        bid = winningBid
+        transaction_list.append({
+            'cost': int(bid),
+            'color': color,
+            'name': playername
+
+            })
+
+        print(transaction_list)
+        return transaction_list
+
 
     def run(self):
 
         transaction_list = []
         players = self.players
         rlPlayer = players[0]
-        endOfGame = False if len(players) > 0 else True
-        while not endOfGame:
+        end_of_game = False if len(players) > 0 else True
+        while not end_of_game:
             color = get_color()
-            new_state = self.play_round(players, color, transaction_list)
-            endOfGame = new_state['endOfGame']
-            transaction_list = new_state['transaction-list']
+            transaction_list = self.play_round(players, color, transaction_list)
 
-        winner_name = new_state["winner"]
+            end_of_game = is_game_finished(transaction_list)
+            if end_of_game is True:
+                winner = get_winner(transaction_list)
+            else:
+                winner = False
+
+            # this is only for RL
+            new_state_to_remember = {
+                'transaction_list': transaction_list,
+                'color': get_color(),
+                'player_bids': initialize_player_bids(players)
+            }
+
+            for player in filter(lambda player: player.is_rl(), players):
+                if end_of_game and winner == player.name:
+                    print("player %s is winner, rewarding! " % player.name)
+                    reward = 1
+                elif end_of_game and winner != player.name:
+                    reward = -1
+                else:
+                    reward = 0
+                player.remember(new_state_to_remember, reward, end_of_game)
+                rlPlayer.replay()
+                rlPlayer.target_train()
 
         print("end of game")
-
-        # learn
-        for player in filter(lambda player: player.is_rl(), players):
-            rlPlayer.replay()
-            rlPlayer.target_train()
+        winner_name = winner
 
         return {'transaction_list': transaction_list, 'winner': winner_name}
