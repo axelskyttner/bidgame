@@ -3,9 +3,10 @@ import random
 from keras.models import Sequential, load_model
 from keras.layers import Dense
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard
+# from keras.callbacks import TensorBoard
 import numpy as np
-from util import convert_state_dict_to_arr
+from util import convert_state_dict_to_arr, get_total_money_left
+from util import get_player_transactions, initialize_player_bids
 
 
 class HumanPlayer():
@@ -16,10 +17,20 @@ class HumanPlayer():
     def is_rl(self):
         return False
 
+    def visualize_input(input_state):
+        color = input_state['color']
+        transaction_list = input_state['transaction_list']
+        player_bids = input_state['player_bids']
+        print("----------------------------------------------------------")
+        print("Now it's time to make a bid on piece of color %s " % color)
+        print("The Player bids are  %s " % str(player_bids))
+        print("and the previous informatoin is  %s " % str(transaction_list))
+
     def action(self, input_state):
-        print("Input_state is %s " % input_state)
+        if False:
+            self.visualize_input(input_state)
         try:
-            action = int(input("type your bid"))
+            action = int(input("type your bid: "))
         except ValueError:
             action = 0
         return action
@@ -48,7 +59,11 @@ class RandomPlayer():
         return False
 
     def action(self, input_state):
-        return int(np.random.random()*100)
+        transaction_list = input_state['transaction_list']
+        player_transactions = get_player_transactions(transaction_list,
+                                                      self.name)
+        money_left = get_total_money_left(player_transactions)
+        return int(np.random.random()*money_left)
 
 
 class RLPlayer():
@@ -68,11 +83,15 @@ class RLPlayer():
         else:
             self.target_model = load_model("%s/target_model.h5" % models_path)
             self.model = load_model("%s/model.h5" % models_path)
+            self.model.summary()
+            self.model.compile(loss="mean_squared_error",
+                          optimizer=Adam(lr=self.learning_rate))
             print("loaded model")
         self.last_action = 0
         self.last_state = {
             'color': 'Green',
             'current_bid': 0,
+            'player_bids': initialize_player_bids([]),
             'transaction_list': []
         }
 
@@ -96,8 +115,8 @@ class RLPlayer():
             model.add(Dense(24, input_dim=15, activation="relu"))
             model.add(Dense(48, activation="relu"))
             model.add(Dense(24, activation="relu"))
-            model.add(Dense(output_size))
-            model.compile(loss="mean_squared_error",
+            model.add(Dense(output_size, activation='softmax'))
+            model.compile(loss="binary_crossentropy",
                           optimizer=Adam(lr=self.learning_rate))
             model.summary()
             return model
@@ -108,8 +127,6 @@ class RLPlayer():
             return
 
         samples = random.sample(self.memory, batch_size)
-        states = []
-        targets = []
         for sample in samples:
             state, action, new_state, reward, done = sample
             state = np.expand_dims(state, axis=0)
@@ -121,15 +138,16 @@ class RLPlayer():
                 new_state = np.expand_dims(new_state, axis=0)
                 Q_future = max(self.target_model.predict(new_state)[0])
                 target[0][action] = reward + Q_future * self.gamma
-            states.append(state)
-            targets.append(target)
 
-            tensorboard_callback = TensorBoard(log_dir='../logs')
+            # tensorboard_callback = TensorBoard(log_dir='../logs')
+
+            # normalize since we're using sigmoid as last activation function
+            normalized_target = target / np.linalg.norm(target[0])
             self.model.fit(state,
-                           target,
+                           normalized_target,
                            epochs=10,
                            verbose=0,
-                           callbacks=[tensorboard_callback])
+                           callbacks=[])
 
     def target_train(self):
         weights = self.model.get_weights()

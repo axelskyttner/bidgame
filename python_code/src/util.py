@@ -1,6 +1,7 @@
 import numpy as np
 from collections import Counter
 
+
 def keywithmaxval(d):
     """ a) create a list of the dict's keys and values;
         b) return the key with the max value"""
@@ -27,7 +28,7 @@ def player_can_afford_it(transaction_list, player_name, bid):
 def initialize_player_bids(players):
     player_bids = {}
     for player in players:
-        player_bids[player.name] = 0
+        player_bids[player.name] = None
 
     return player_bids
 

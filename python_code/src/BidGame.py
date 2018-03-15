@@ -2,6 +2,7 @@
 import pprint
 from util import is_game_finished, get_winner, initialize_player_bids
 from util import player_can_afford_it, keywithmaxval, get_color
+import random
 
 
 class BidGame():
@@ -28,6 +29,7 @@ class BidGame():
 
     def play_round(self, players, color, transaction_list):
 
+        random.shuffle(players)
         player_bids = initialize_player_bids(players)
         for player in players:
             player_name = player.name
@@ -47,12 +49,16 @@ class BidGame():
                 player_bids[player_name] = 0
 
         winningPlayer = keywithmaxval(player_bids)
-        winningBid = player_bids[winningPlayer]
+        winning_bid = player_bids[winningPlayer]
 
         playername = winningPlayer
-        bid = winningBid
+        if False:
+            print("Hear, hear!")
+            print("player %s won the color %s for %s coins!" %
+                  (playername, color, winning_bid))
+
         transaction_list.append({
-            'cost': int(bid),
+            'cost': int(winning_bid),
             'color': color,
             'name': playername
             })
